@@ -1,38 +1,40 @@
-#name: Terraform Deploy
+####manual trigger with ubuntu server where server creates infrastructure and get terminated, here server is provided by github actions.
 
-#on:
-  # push:
- #    branches: [ main ]
-  #workflow_dispatch:   # ✅ Manual trigger only
+name: Terraform Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # ✅ Manual trigger only
 
 
-#jobs:
-#  terraform:
-#    runs-on: ubuntu-latest
+jobs:
+ terraform:
+   runs-on: ubuntu-latest
 
-#    env:
-##      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
- ##     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    #  AWS_DEFAULT_REGION: us-east-1 # change if needed
+   env:
+#      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+ #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+     AWS_DEFAULT_REGION: us-east-1 # change if needed
 
-   # steps:
-   #   - name: Checkout
-     #   uses: actions/checkout@v4
+   steps:
+     - name: Checkout
+       uses: actions/checkout@v4
 
-    #  - name: Setup Terraform
-    #    uses: hashicorp/setup-terraform@v3
+     - name: Setup Terraform
+       uses: hashicorp/setup-terraform@v3
 
-    #  - name: Terraform Init
-     #   run: terraform init
+     - name: Terraform Init
+       run: terraform init
 
-    ##  - name: Terraform Validate
-    #    run: terraform validate
+    #  - name: Terraform Validate
+       run: terraform validate
 
-     # - name: Terraform Plan
-#run: terraform plan -out=tfplan
+     - name: Terraform Plan
+run: terraform plan -out=tfplan
 
-     # - name: Terraform Apply
-      #  run: terraform apply -auto-approve tfplan
+     - name: Terraform Apply
+       run: terraform apply -auto-approve tfplan
 
 
 ##### condition based after plan approval only apply #######
@@ -105,39 +107,39 @@
       # - name: Terraform Apply
       #   run: terraform apply -auto-approve tfplan
 
+##### self-hosted on our ec2 here statefile also present with
+# name: Terraform Deployment
 
-name: Terraform Deployment
+# on:
+#   workflow_dispatch:
 
-on:
-  workflow_dispatch:
+# jobs:
+#   terraform:
+#     runs-on: self-hosted
 
-jobs:
-  terraform:
-    runs-on: self-hosted
+#     env:
+#       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#       AWS_DEFAULT_REGION: us-east-1
 
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_DEFAULT_REGION: us-east-1
+#     steps:
+#       - name: Checkout Repository
+#         uses: actions/checkout@v4
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+#       - name: Check Terraform Version
+#         run: terraform version
 
-      - name: Check Terraform Version
-        run: terraform version
+#       - name: Terraform Init
+#         run: terraform init
 
-      - name: Terraform Init
-        run: terraform init
+#       - name: Terraform Validate
+#         run: terraform validate
 
-      - name: Terraform Validate
-        run: terraform validate
+#       - name: Terraform Plan
+#         run: terraform plan -out=tfplan
 
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+#       - name: Terraform Apply
+#         run: terraform apply -auto-approve tfplan
