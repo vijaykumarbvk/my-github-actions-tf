@@ -1,8 +1,7 @@
 ####manual trigger with ubuntu server where server creates infrastructure and get terminated, here server is provided by github actions.
 
 name: Terraform Deploy
-
-# on:
+ on:
 #   push:
 #     branches: [ main ]
   workflow_dispatch:   # ✅ Manual trigger only
