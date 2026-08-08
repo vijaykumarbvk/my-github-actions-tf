@@ -1,13 +1,13 @@
-#### condition based after plan approval only apply ####
-name: Terraform Deploy
+name: Terraform Deploy Through OIDC
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+# Required for GitHub OIDC
 permissions:
-  id-token: write   # required to fetch the OIDC token
-  contents: read    # required for actions/checkout
+  id-token: write
+  contents: read
 
 jobs:
   plan:
@@ -19,7 +19,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::767397768150:role/oidc-role
@@ -55,7 +55,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::767397768150:role/oidc-role
@@ -72,89 +72,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-
-###manual trigger with ubuntu server where server creates infrastructure and get terminated, here server is provided by github actions.
-name: Terraform Deploy
-on:
-  workflow_dispatch:   # ✅ Manual trigger only
-
-permissions:
-  id-token: write   # required to fetch the OIDC token
-  contents: read    # required for actions/checkout
-
-jobs:
-  terraform:
-    runs-on: ubuntu-latest
-    env:
-      AWS_DEFAULT_REGION: us-east-1   # change if needed
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::767397768150:role/oidc-role
-          aws-region: us-east-1
-          role-session-name: gha-terraform-deploy
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-
-#### self-hosted on our ec2 here statefile also present with
-name: Terraform Deployment
-on:
-  workflow_dispatch:
-
-permissions:
-  id-token: write   # required to fetch the OIDC token
-  contents: read    # required for actions/checkout
-
-jobs:
-  terraform:
-    runs-on: self-hosted
-    env:
-      AWS_DEFAULT_REGION: us-east-1
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::767397768150:role/oidc-role
-          aws-region: us-east-1
-          role-session-name: gha-terraform-selfhosted
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Check Terraform Version
-        run: terraform version
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
