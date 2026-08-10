@@ -1,0 +1,39 @@
+name: Terraform Deploy
+
+on:
+  workflow_dispatch:   # ✅ Manual trigger only
+
+# Required permissions for OIDC authentication
+permissions:
+  id-token: write   # Necessary to request the OIDC JWT token
+  contents: read    # Required to checkout repository code
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Replace <YOUR_IAM_ROLE_NAME> with the exact name of the IAM role attached to your OIDC trust policy
+          role-to-assume: arn:aws:iam::866771492404:role/<YOUR_IAM_ROLE_NAME>
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
