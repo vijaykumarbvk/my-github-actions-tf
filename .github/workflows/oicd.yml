@@ -1,12 +1,11 @@
-name: Terraform oidc Deploy
+name: Terraform Deploy
 
 on:
-  workflow_dispatch:   # ✅ Manual trigger only
+  workflow_dispatch:
 
-# Required permissions for OIDC authentication
 permissions:
-  id-token: write   # Necessary to request the OIDC JWT token
-  contents: read    # Required to checkout repository code
+  id-token: write   # Required for requesting OIDC JWT token
+  contents: read    # Required to checkout the repo
 
 jobs:
   terraform:
@@ -19,8 +18,7 @@ jobs:
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # Replace <YOUR_IAM_ROLE_NAME> with the exact name of the IAM role attached to your OIDC trust policy
-          role-to-assume: arn:aws:iam::866771492404:role/<YOUR_IAM_ROLE_NAME>
+          role-to-assume: arn:aws:iam::866771492404:role/YOUR_ACTUAL_IAM_ROLE_NAME  # Ensure this matches your AWS Role Name
           aws-region: us-east-1
 
       - name: Setup Terraform
