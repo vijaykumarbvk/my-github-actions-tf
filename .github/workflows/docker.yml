@@ -1,0 +1,63 @@
+name: Docker CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 761204575501.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: img7
+  IMAGE_TAG: latest
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image to Amazon ECR
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 3.92.62.90
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Authenticate Docker to ECR on the EC2 instance
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 761204575501.dkr.ecr.us-east-1.amazonaws.com
+
+            # Pull the latest image
+            docker pull 761204575501.dkr.ecr.us-east-1.amazonaws.com/img7:latest
+
+            # Stop and remove existing container if running
+            docker stop img7 || true
+            docker rm img7 || true
+
+            # Run new container
+            docker run -d \
+              --name img7 \
+              --restart unless-stopped \
+              -p 5001:5000 \
+              761204575501.dkr.ecr.us-east-1.amazonaws.com/img7:latest
+
+            # Verify running container
+            docker ps
