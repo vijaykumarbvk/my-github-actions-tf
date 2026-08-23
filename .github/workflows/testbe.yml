@@ -18,6 +18,12 @@ jobs:
           role-to-assume: arn:aws:iam::814203451643:role/OIDC-role
           aws-region: us-east-1
 
+      - name: Debug OIDC Token Claims
+        run: |
+          ID_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          echo "=== DECODED JWT PAYLOAD ==="
+          echo $ID_TOKEN | cut -d. -f2 | tr '_-' '/+' | base64 -d | jq .
+
       - name: Deploy and Restart Application via AWS SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
