@@ -1,0 +1,145 @@
+name: Backend to EC2 via SSM and OIDC
+
+on:
+  # push:
+  #   branches:
+  #     - main
+  workflow_dispatch:
+
+# Required for AWS OIDC authentication
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::814203451643:role/OIDC-role
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy and Restart Application via AWS SSM
+        run: |
+          # Using a single SSM command to execute the entire deployment script sequentially
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=instanceids,Values=${{ secrets.EC2_INSTANCE_ID }}" \
+            --comment "Deploy Spring Boot Backend" \
+            --parameters '{"commands":["'"
+              set -e
+              
+              # 1. Prepare EC2
+              sudo yum install -y git maven java-17-amazon-corretto
+              
+              # 2. Clone / Pull Repository
+              APP_DIR=/home/ec2-user/app
+              REPO_NAME=Java-springboot-project
+              REPO_URL=https://github.com/CloudTechDevOps/Java-springboot-project.git
+              mkdir -p \$APP_DIR
+              cd \$APP_DIR
+              if [ -d \"\$REPO_NAME/.git\" ]; then
+                cd \$REPO_NAME
+                git reset --hard
+                git pull origin main
+              else
+                git clone \$REPO_URL
+                cd \$REPO_NAME
+              fi
+              
+              # 3. Build Maven Application
+              cd backend
+              mvn clean package -DskipTests -U
+              
+              # 4. Stop Old Application
+              PID=\$(ps -ef | grep '[d]atastore-0.0.7.jar' | awk '{print \$2}')
+              if [ -n \"\$PID\" ]; then
+                echo \"Stopping PID: \$PID\"
+                kill -15 \$PID
+                sleep 5
+                if ps -p \$PID > /dev/null 2>&1; then
+                  echo \"Force killing PID: \$PID\"
+                  kill -9 \$PID
+                fi
+                echo \"Application stopped.\"
+              else
+                echo \"Application is not running.\"
+              fi
+              
+              # 5. Start Application
+              LOG_DIR=/var/log/app
+              sudo mkdir -p \$LOG_DIR
+              sudo chown ec2-user:ec2-user \$LOG_DIR
+              cd target
+              
+              nohup env \
+                MYSQL_HOST=${{ secrets.DB_HOST }} \
+                MYSQL_PORT=3306 \
+                MYSQL_USERNAME=${{ secrets.DB_USERNAME }} \
+                MYSQL_PASSWORD=${{ secrets.DB_PASSWORD }} \
+                LOG_FILE_PATH=\$LOG_DIR/datastore.log \
+                java -jar datastore-0.0.7.jar --server.port=8084 \
+                > \$LOG_DIR/nohup.out 2>&1 &
+                
+              # 6. Verify Application
+              sleep 15
+              HEALTH=\$(curl -s http://localhost:8084/actuator/health)
+              echo \"Health check response: \$HEALTH\"
+              if [[ \"\$HEALTH\" == *'\"status\":\"UP\"'* ]]; then
+                echo \"Application started successfully.\"
+                exit 0
+              else
+                echo \"Application failed health check.\"
+                exit 1
+              fi
+            "'"]}' \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "Deployment initiated. SSM Command ID: $COMMAND_ID"
+          
+          # Wait for the SSM command to finish executing
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+            
+          # Fetch and print the standard output/error from the EC2 instance for debugging
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "StandardOutputContent" \
+            --output text
+
+      - name: Send Deployment Report
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: Backend Deployment Report - ${{ github.repository }}
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Status: ${{ job.status }}
+            Actor: ${{ github.actor }}
+            Workflow: ${{ github.workflow }}
+            Deployment Method: AWS SSM (OIDC Authenticated)
