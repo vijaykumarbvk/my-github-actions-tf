@@ -1,0 +1,147 @@
+name: Frontend to EC2 via SSM and OIDC
+
+on:
+  # push:
+  #   branches:
+  #     - main
+  workflow_dispatch:
+
+# Required for AWS OIDC authentication
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      ######################################################
+      # AWS Authentication
+      ######################################################
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::814203451643:role/OIDC-role
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      ######################################################
+      # Deploy via AWS SSM
+      ######################################################
+      - name: Deploy Frontend via AWS SSM
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=instanceids,Values=${{ secrets.EC2_INSTANCE_ID }}" \
+            --comment "Deploy Streamlit Frontend" \
+            --parameters '{"commands":["'"
+              set -e
+              
+              APP_DIR=/home/ec2-user/front
+              REPO_NAME=Java-springboot-project
+              REPO_URL=https://github.com/CloudTechDevOps/Java-springboot-project.git
+              
+              echo \"🚀 Starting deployment...\"
+              
+              mkdir -p \$APP_DIR
+              cd \$APP_DIR
+              
+              if [ -d \"\$REPO_NAME/.git\" ]; then
+                cd \$REPO_NAME
+                git reset --hard
+                git pull origin main
+              else
+                git clone \$REPO_URL
+                cd \$REPO_NAME
+              fi
+              
+              sudo dnf install -y python3 python3-pip
+              cd frontend
+              
+              if [ ! -d \"venv\" ]; then
+                python3 -m venv venv
+              fi
+              
+              source venv/bin/activate
+              pip install --upgrade pip
+              pip install -r requirements.txt
+              
+              # Create Systemd Service File
+              sudo tee /etc/systemd/system/frontend.service > /dev/null <<EOF
+              [Unit]
+              Description=Streamlit Frontend App
+              After=network.target
+              
+              [Service]
+              User=ec2-user
+              WorkingDirectory=/home/ec2-user/front/Java-springboot-project/frontend
+              ExecStart=/bin/bash -c 'source /home/ec2-user/front/Java-springboot-project/frontend/venv/bin/activate && streamlit run app.py --server.port=8501 --server.address=0.0.0.0'
+              Environment=API_URL=http://localhost:8084
+              Restart=always
+              RestartSec=5
+              StandardOutput=append:/home/ec2-user/frontend.log
+              StandardError=append:/home/ec2-user/frontend-error.log
+              
+              [Install]
+              WantedBy=multi-user.target
+              EOF
+              
+              sudo systemctl daemon-reload
+              sudo systemctl enable frontend
+              sudo systemctl restart frontend
+              
+              echo \"Deployment completed.\"
+            "'"]}' \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "Deployment initiated. SSM Command ID: $COMMAND_ID"
+          
+          # Wait for the SSM command to finish executing
+          aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}"
+            
+          # Fetch standard output for logs
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "StandardOutputContent" \
+            --output text
+
+      ######################################################
+      # Email Notification
+      ######################################################
+      - name: 📧 Send Deployment Report
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: AI Deployment Report - ${{ github.repository }}
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            🚀 AI Deployment Report
+
+            Repository : ${{ github.repository }}
+            Workflow   : ${{ github.workflow }}
+            Branch     : ${{ github.ref_name }}
+            Commit     : ${{ github.sha }}
+
+            Status     : ${{ job.status }}
+
+            Triggered By : ${{ github.actor }}
+            Run Number   : ${{ github.run_number }}
+
+            Deployment Target  : EC2 via AWS SSM (OIDC Authenticated)
+            Frontend URL       : http://${{ secrets.EC2_HOST }}:8501
+
+            Regards,
+            GitHub Actions
